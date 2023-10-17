@@ -1,0 +1,39 @@
+version: '3.8'
+services:
+  web:
+    image: odoo:16.0
+    depends_on:
+      - db
+    environment:
+      - USER=${POSTGRES_USER}
+      - PASSWORD=${POSTGRES_PASSWORD} # Password to setup Postgres
+      #- ODOO_ADMIN_PASSWD=${ODOO_ADMIN_PASSWD} # Password DB CRUD commands
+    user: "101:1000" # 101=odoo user, 1000=host main user group
+    networks:
+      - odoo-network
+    ports:
+      - "8069:8069"
+    volumes:
+      - ./addons:/mnt/extra-addons # Addons folder
+      - ./filestore:/var/lib/odoo/filestore # File store folder
+      - ./sessions:/var/lib/odoo/sessions # Sessions folder
+      
+  db:
+    container_name: odoo-database
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+    # * host port : container port
+      - "127.0.0.1:5432:5432"
+    networks:
+      - odoo-network
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+networks:
+  odoo-network:
+    name: odoo_network
