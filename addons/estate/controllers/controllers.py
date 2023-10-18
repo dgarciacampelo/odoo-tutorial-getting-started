@@ -10,10 +10,16 @@ from odoo.tools.safe_eval import safe_eval
 _logger = logging.getLogger(__name__)
 
 
-class EstateController(http.Controller):
-    route = "/estate/properties"
+# TODO: Setup permissions for the API endpoints, using security/ir.model.access.csv:
+# ? access_estate_property,estate.property,model_estate_property,base.group_user,1,1,1,1
 
-    @http.route(route, auth="public", type="http", sitemap=False, methods=["GET"])
+
+class EstateController(http.Controller):
+    # HTTP request routes definition
+    get_route = "/estate/properties"
+    post_route = "/estate/properties/create"
+
+    @http.route(get_route, auth="public", type="http", sitemap=False, methods=["GET"])
     def get_estate_properties(self, **kw):
         # Get query parameters from the request
         domain = safe_eval(kw.get("domain", "[]"))
@@ -62,15 +68,6 @@ class EstateController(http.Controller):
                 properties_data.append(property_data)
 
             # Log estate_properties
-            _logger.info("Estate Properties API: %s", self.route)
-            for property in estate_properties:
-                _logger.info(
-                    "Property ID: %s, Name: %s, Price: %s",
-                    property["id"],
-                    property["name"],
-                    property["expected_price"],
-                )
-
             _logger.info("Estate Properties data: %s", properties_data)
 
             response_data = json.dumps(properties_data, ensure_ascii=False)
@@ -80,9 +77,79 @@ class EstateController(http.Controller):
 
         except Exception as e:
             error_response = {"error": str(e)}
-            _logger.error(f"Error at {self.route}: {e}")
+            _logger.error(f"Error at {self.get_route}: {e}")
             return Response(
                 response=json.dumps(error_response),
                 content_type="application/json",
                 status=500,
+            )
+
+    @http.route(post_route, auth="public", type="json", methods=["POST"])
+    def create_estate_property(self, **kw):
+        request_json_data = json.loads(http.request.httprequest.data)
+        request_data = request_json_data.get("data", {})
+        _logger.info(f"Create Estate Property parameters: {request_data}")
+
+        if not request_data:
+            error_response = {"error": "No data provided in the request."}
+            return Response(
+                response=json.dumps(error_response),
+                content_type="application/json",
+                status=400,  # Bad Request status code
+            )
+
+        # Extract the property details from the request
+        property_name = request_data.get("name", "")
+        property_type_name = request_data.get("propertyTypeName", "Unspecified")
+        post_code = request_data.get("postCode", "")
+        bedrooms = request_data.get("bedrooms", None)  # Default model value is 2
+        living_area = request_data.get("livingArea", None)
+        expected_price = request_data.get("expectedPrice", 0)
+
+        # Find the property type by name
+        property_type = http.request.env["estate.property.type"].search(
+            [("name", "=", property_type_name)], limit=1
+        )
+
+        if not property_type:
+            error_response = {
+                "error": f"Property type '{property_type_name}' not found."
+            }
+            return Response(
+                response=json.dumps(error_response),
+                content_type="application/json",
+                status=404,  # Not Found status code
+            )
+
+        # Create a new estate property, using a dictionary
+        fields = {
+            "active": True,
+            "name": property_name,
+            "property_type_id": property_type.id,
+            "postcode": post_code,
+            "expected_price": expected_price,
+        }
+        # Add fields with default model values, if provided
+        if bedrooms:
+            fields["bedrooms"] = bedrooms
+        if living_area:
+            fields["living_area"] = living_area
+
+        estate_property = http.request.env["estate.property"].create(fields)
+
+        if estate_property:
+            success_response = {
+                "success": f"Estate property '{property_name}' created with ID {estate_property.id}"
+            }
+            return Response(
+                response=json.dumps(success_response),
+                content_type="application/json",
+                status=201,  # Created status code
+            )
+        else:
+            error_response = {"error": "Failed to create the estate property."}
+            return Response(
+                response=json.dumps(error_response),
+                content_type="application/json",
+                status=500,  # Internal Server Error status code
             )
